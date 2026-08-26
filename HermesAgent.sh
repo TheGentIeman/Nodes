@@ -1,7 +1,7 @@
 #!/bin/bash
 set -Eeuo pipefail
 
-VERSION="1.2.0"
+VERSION="1.2.1"
 SELF_URL="https://raw.githubusercontent.com/TheGentIeman/Nodes/main/HermesAgent.sh"
 BASE_URL="https://raw.githubusercontent.com/TheGentIeman/Nodes/main/HermesAgent"
 HERMES_HOME="${HERMES_HOME:-$HOME/.hermes}"
@@ -63,17 +63,19 @@ ensure_runtime_deps(){
   info "Устанавливаю системные зависимости..."
   $SUDO apt-get update -y
   DEBIAN_FRONTEND=noninteractive $SUDO apt-get install -y \
-    ca-certificates curl wget git jq sqlite3 python3 docker.io figlet whiptail \
+    ca-certificates curl wget git gh jq sqlite3 python3 docker.io figlet whiptail \
     tar xz-utils gzip unzip libatomic1 make
   $SUDO systemctl enable --now docker
   $SUDO ldconfig
   command -v xz >/dev/null 2>&1 || { err "xz-utils не установился."; return 1; }
+  command -v gh >/dev/null 2>&1 || { err "GitHub CLI (gh) не установился."; return 1; }
   ldconfig -p 2>/dev/null | grep -q 'libatomic\.so\.1' || {
     DEBIAN_FRONTEND=noninteractive $SUDO apt-get install --reinstall -y libatomic1
     $SUDO ldconfig
   }
   ldconfig -p 2>/dev/null | grep -q 'libatomic\.so\.1' || { err "libatomic.so.1 не найден."; return 1; }
   ok "Docker и системные зависимости готовы"
+  ok "GitHub CLI (gh) установлен"
 }
 
 find_hermes(){ runtime_path; command -v hermes >/dev/null 2>&1; }
@@ -210,9 +212,12 @@ ${CYAN}Первичная установка закончена.${NC}
    Проверка:
    hermes chat -q "Use Browser Automation, not web search. Open https://www.coingecko.com and tell me whether the real homepage loaded or a verification page appeared."
 
-7. Проверить Signal Radar вручную.
-8. Проверить Evidence Dive вручную.
-9. Только потом включить Cron.
+7. GitHub CLI уже установлен базовым скриптом. Для авторизации:
+   gh auth login
+
+8. Проверить Signal Radar вручную.
+9. Проверить Evidence Dive вручную.
+10. Только потом включить Cron.
 
 Research DB: $RESEARCH_DIR
 Telegram: https://t.me/GentleChron
@@ -282,6 +287,7 @@ tracker(){
 diag(){
   logo
   command -v docker >/dev/null && ok "$(docker --version)" || err "Docker отсутствует"
+  command -v gh >/dev/null && ok "GitHub CLI: $(gh --version | head -n1)" || err "GitHub CLI отсутствует"
   if find_hermes; then
     ok "Hermes: $(hermes --version 2>/dev/null || echo installed)"
     if docker ps --format '{{.Names}}' | grep -qx 'camofox-browser' && curl -fsS http://127.0.0.1:9377/health >/dev/null 2>&1; then
