@@ -14,6 +14,14 @@ if [ "$(id -u)" -eq 0 ]; then SUDO=""; else SUDO="sudo"; fi
 command -v docker >/dev/null 2>&1 || { err "Docker не установлен."; exit 1; }
 command -v hermes >/dev/null 2>&1 || { err "Hermes не установлен."; exit 1; }
 
+# The Hermes setup wizard can enable the Docker egress firewall before iron-proxy
+# has actually been configured. With enforce_on_docker=true that blocks all Docker
+# tool sessions, including browser-related work. For the default research setup we
+# keep egress disabled until the user intentionally configures it later.
+info "Отключаю незавершённый Egress firewall, чтобы Docker Tools не блокировались..."
+hermes egress disable >/dev/null 2>&1 || hermes config set proxy.enabled false >/dev/null 2>&1 || true
+ok "Egress firewall выключен до отдельной ручной настройки"
+
 info "Ставлю зависимости Camofox..."
 $SUDO apt-get update -y
 DEBIAN_FRONTEND=noninteractive $SUDO apt-get install -y git make curl ca-certificates
