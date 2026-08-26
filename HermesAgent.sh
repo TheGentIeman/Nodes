@@ -1,7 +1,7 @@
 #!/bin/bash
 set -Eeuo pipefail
 
-VERSION="1.2.1"
+VERSION="1.2.2"
 SELF_URL="https://raw.githubusercontent.com/TheGentIeman/Nodes/main/HermesAgent.sh"
 BASE_URL="https://raw.githubusercontent.com/TheGentIeman/Nodes/main/HermesAgent"
 HERMES_HOME="${HERMES_HOME:-$HOME/.hermes}"
@@ -109,7 +109,7 @@ show_first_install_instructions(){
   echo "  5. Your minimal agent is ready. What next?"
   echo -e "     ${GREEN}Start with everything disabled — finish now${NC}"
   echo
-  echo "После этого наш скрипт сам добавит Research Skills, Tracker и Camofox anti-detection Browser."
+  echo "Встроенный browser Hermes мы специально НЕ ставим: дальше скрипт сам поднимет Camofox."
   echo
   read -r -p "Нажмите Enter, чтобы открыть официальный installer Hermes..." _
 }
@@ -123,8 +123,12 @@ install_hermes(){
   else
     FRESH_INSTALL=1
     show_first_install_instructions
-    info "Устанавливаю официальный Hermes Agent..."
-    curl -fsSL -H 'Cache-Control: no-cache' "https://hermes-agent.nousresearch.com/install.sh?ts=$(date +%s%N)" | bash
+    info "Устанавливаю официальный Hermes Agent без встроенного browser-пакета..."
+    # We use Camofox below, so skipping Hermes/Playwright browser avoids an unnecessary
+    # install-blocking npm step in the official installer on headless VPS hosts.
+    curl -fsSL -H 'Cache-Control: no-cache' \
+      "https://hermes-agent.nousresearch.com/install.sh?ts=$(date +%s%N)" | \
+      bash -s -- --skip-browser
     runtime_path
   fi
   find_hermes || { err "Hermes не найден после официальной установки."; return 1; }
@@ -209,15 +213,12 @@ ${CYAN}Первичная установка закончена.${NC}
 5. Если нужен X Search — пункт 7 и xAI OAuth.
 
 6. Browser уже ставится как Camofox anti-detection backend.
-   Проверка:
-   hermes chat -q "Use Browser Automation, not web search. Open https://www.coingecko.com and tell me whether the real homepage loaded or a verification page appeared."
 
-7. GitHub CLI уже установлен базовым скриптом. Для авторизации:
+7. GitHub CLI уже установлен. Для авторизации:
    gh auth login
 
-8. Проверить Signal Radar вручную.
-9. Проверить Evidence Dive вручную.
-10. Только потом включить Cron.
+8. Проверить Signal Radar / Evidence Dive через Telegram.
+9. Только потом включить Cron.
 
 Research DB: $RESEARCH_DIR
 Telegram: https://t.me/GentleChron
