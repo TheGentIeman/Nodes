@@ -1,7 +1,7 @@
 #!/bin/bash
 set -Eeuo pipefail
 
-VERSION="1.0.4"
+VERSION="1.0.5"
 SELF_URL="https://raw.githubusercontent.com/TheGentIeman/Nodes/main/HermesAgent.sh"
 BASE_URL="https://raw.githubusercontent.com/TheGentIeman/Nodes/main/HermesAgent"
 HERMES_HOME="${HERMES_HOME:-$HOME/.hermes}"
@@ -39,14 +39,12 @@ self_update(){
   tmp="$(mktemp)"
   if curl -fsSL -H 'Cache-Control: no-cache, no-store' "$(cache_url "$SELF_URL")" -o "$tmp"; then
     remote="$(grep -m1 '^VERSION=' "$tmp" | cut -d'"' -f2 || true)"
-    if [ -n "$remote" ] && [ "$remote" != "$VERSION" ]; then
-      if bash -n "$tmp"; then
-        info "Найдена новая версия installer: $VERSION -> $remote"
-        cp "$tmp" "$0"
-        chmod +x "$0"
-        rm -f "$tmp"
-        exec "$0" "$@"
-      fi
+    if [ -n "$remote" ] && [ "$remote" != "$VERSION" ] && bash -n "$tmp"; then
+      info "Найдена новая версия installer: $VERSION -> $remote"
+      cp "$tmp" "$0"
+      chmod +x "$0"
+      rm -f "$tmp"
+      exec "$0" "$@"
     fi
   fi
   rm -f "$tmp"
@@ -75,14 +73,10 @@ ensure_runtime_deps(){
   command -v xz >/dev/null 2>&1 || { err "xz-utils не установился."; return 1; }
   command -v tar >/dev/null 2>&1 || { err "tar не установился."; return 1; }
   dpkg-query -W -f='${Status}' libatomic1 2>/dev/null | grep -q 'install ok installed' || {
-    warn "libatomic1 не прошёл первую проверку. Переустанавливаю..."
     DEBIAN_FRONTEND=noninteractive $SUDO apt-get install --reinstall -y libatomic1
     $SUDO ldconfig
   }
-  ldconfig -p 2>/dev/null | grep -q 'libatomic\.so\.1' || {
-    err "libatomic.so.1 не появился в системном loader даже после установки libatomic1."
-    return 1
-  }
+  ldconfig -p 2>/dev/null | grep -q 'libatomic\.so\.1' || { err "libatomic.so.1 не найден."; return 1; }
 
   ok "Docker установлен и запущен"
   ok "xz-utils готов"
@@ -98,10 +92,10 @@ prepare_managed_node(){
   local node="$HOME/.hermes/node/bin/node"
   if [ -x "$node" ]; then
     if "$node" --version >/dev/null 2>&1; then
-      ok "Существующий Hermes-managed Node исправен: $($node --version)"
+      ok "Hermes-managed Node исправен: $($node --version)"
       return 0
     fi
-    warn "Нашёл битую/недоустановленную Hermes Node.js. Очищаю перед повторной установкой."
+    warn "Нашёл битую/недоустановленную Hermes Node.js. Очищаю."
     rm -rf "$HOME/.hermes/node"
   fi
 }
@@ -173,6 +167,38 @@ sandbox(){
   ok "Docker Sandbox и persistent research-data настроены"
 }
 
+next_steps(){
+cat <<EOF2
+
+1. Подключить модель через пункт 3 этого меню.
+   - Есть ChatGPT Plus/Pro/Codex -> OpenAI ▶
+   - Хотите самый простой all-in-one -> Nous Portal
+   - Есть API-ключ агрегатора -> OpenRouter
+   - Хотите Grok/X Search через xAI -> xAI Grok ▶
+
+2. Проверить чат:
+   hermes chat -q "Reply only with: AGENT WORKS"
+
+3. Telegram:
+   hermes gateway setup
+
+4. Gateway 24/7:
+   hermes gateway install && sudo loginctl enable-linger "$USER" && hermes gateway start
+
+5. Tools:
+   hermes tools
+
+6. Signal Radar:
+   hermes chat -s signal-radar -q "Find the strongest fresh developments in my priority topics from the last 24 hours. Verify important claims and avoid generic news."
+
+7. Deep Research:
+   hermes chat -s evidence-dive -q "Investigate TARGET deeply. Build a timeline, verify claims, find contradictions and separate confirmed facts from inference."
+
+Research DB: $RESEARCH_DIR
+Telegram: https://t.me/GentleChron
+EOF2
+}
+
 full_install(){
   logo
   install_hermes
@@ -185,23 +211,59 @@ full_install(){
   next_steps
 }
 
-next_steps(){
-cat <<EOF2
+model(){
+  find_hermes || { err "Сначала установите Hermes."; return; }
+  logo
+  local choice
+  choice=$(whiptail --title "Выбор AI-провайдера" --menu \
+    "Сначала выберите подходящий вариант. Скрипт не просит и не сохраняет ваши ключи — авторизация проходит через официальный Hermes." \
+    22 100 8 \
+      "1" "ChatGPT Plus/Pro/Codex — рекомендуемый вариант: OpenAI ▶" \
+      "2" "Самый простой all-in-one — Nous Portal" \
+      "3" "OpenRouter API — если уже есть API key / баланс" \
+      "4" "xAI / Grok — direct API или SuperGrok / Premium+ OAuth" \
+      "5" "Другой провайдер — открыть полный список Hermes" \
+      "6" "Назад" \
+    3>&1 1>&2 2>&3) || return 0
 
-1. Модель:       hermes model
-2. Тест:         hermes chat -q "Reply only with: AGENT WORKS"
-3. Telegram:     hermes gateway setup
-4. Gateway 24/7: hermes gateway install && sudo loginctl enable-linger "$USER" && hermes gateway start
-5. Tools:        hermes tools
-6. Signal Radar: hermes chat -s signal-radar -q "Find the strongest fresh developments in my priority topics from the last 24 hours. Verify important claims and avoid generic news."
-7. Deep Research: hermes chat -s evidence-dive -q "Investigate TARGET deeply. Build a timeline, verify claims, find contradictions and separate confirmed facts from inference."
-
-Research DB: $RESEARCH_DIR
-Telegram: https://t.me/GentleChron
-EOF2
+  case "$choice" in
+    1)
+      clear
+      echo -e "${CYAN}Сейчас откроется официальный список Hermes.${NC}"
+      echo -e "${GREEN}Выберите строку:${NC} OpenAI ▶ (ChatGPT/Codex subscription or direct OpenAI API)"
+      echo "Дальше Hermes предложит OAuth подписки или API-вариант."
+      echo
+      read -r -p "Нажмите Enter, чтобы открыть список..." _
+      hermes model
+      ;;
+    2)
+      clear
+      echo -e "${CYAN}Запускаю официальный Nous Portal OAuth.${NC}"
+      echo "Это самый простой вариант, если не хотите отдельно разбираться с API-провайдерами."
+      echo
+      hermes setup --portal
+      ;;
+    3)
+      clear
+      echo -e "${CYAN}Сейчас откроется официальный список Hermes.${NC}"
+      echo -e "${GREEN}Выберите строку:${NC} OpenRouter (Pay-per-use API aggregator)"
+      echo
+      read -r -p "Нажмите Enter, чтобы открыть список..." _
+      hermes model
+      ;;
+    4)
+      clear
+      echo -e "${CYAN}Сейчас откроется официальный список Hermes.${NC}"
+      echo -e "${GREEN}Выберите строку:${NC} xAI Grok ▶ (Direct API or SuperGrok / Premium+ OAuth)"
+      echo
+      read -r -p "Нажмите Enter, чтобы открыть список..." _
+      hermes model
+      ;;
+    5) hermes model;;
+    6) return 0;;
+  esac
 }
 
-model(){ find_hermes || { err "Сначала установите Hermes."; return; }; hermes model; }
 telegram(){ find_hermes || { err "Сначала установите Hermes."; return; }; hermes gateway setup; }
 tools(){ find_hermes || { err "Сначала установите Hermes."; return; }; hermes tools; }
 gateway(){ find_hermes || { err "Сначала установите Hermes."; return; }; hermes gateway install; $SUDO loginctl enable-linger "$USER"; hermes gateway start; hermes gateway status || true; }
