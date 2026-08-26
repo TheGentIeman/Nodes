@@ -31,12 +31,24 @@ else
   fi
 fi
 
-info "Собираю и запускаю anti-detection browser..."
 cd "$CAMOFOX_DIR"
+info "Собираю Camofox anti-detection browser..."
+make build
+
+IMAGE="$(docker images --format '{{.Repository}}:{{.Tag}}' | grep '^camofox-browser:' | head -n1 || true)"
+[ -n "$IMAGE" ] || { err "Docker image Camofox не найден после сборки."; exit 1; }
+
 if docker ps -a --format '{{.Names}}' | grep -qx 'camofox-browser'; then
   docker rm -f camofox-browser >/dev/null 2>&1 || true
 fi
-make up
+
+info "Запускаю Camofox только на localhost:9377..."
+docker run -d \
+  --restart unless-stopped \
+  --name camofox-browser \
+  --shm-size=2g \
+  -p 127.0.0.1:9377:9377 \
+  "$IMAGE" >/dev/null
 
 info "Жду Camofox API..."
 for i in $(seq 1 60); do
@@ -60,11 +72,12 @@ else
   echo 'CAMOFOX_URL=http://localhost:9377' >> "$HERMES_HOME/.env"
 fi
 
-# Camofox uses Hermes built-in browser tools, not browser-use/Chrome harness.
+# Camofox is an anti-detection Firefox backend. Hermes must use built-in browser tools.
 hermes config set browser.cloud_provider camofox
 hermes config set browser.backend off
 
 ok "Hermes переключён на Camofox anti-detection browser"
+warn "Camofox сильно уменьшает обычные headless-фингерпринты, но не гарантирует обход любой CAPTCHA/Cloudflare challenge."
 echo
 echo "Проверка:"
 echo 'hermes chat -q "Use Browser Automation, not web search. Open https://www.coingecko.com and tell me whether the real homepage loaded or a verification page appeared."'
