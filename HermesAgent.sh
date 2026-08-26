@@ -1,7 +1,7 @@
 #!/bin/bash
 set -Eeuo pipefail
 
-VERSION="1.0.5"
+VERSION="1.0.6"
 SELF_URL="https://raw.githubusercontent.com/TheGentIeman/Nodes/main/HermesAgent.sh"
 BASE_URL="https://raw.githubusercontent.com/TheGentIeman/Nodes/main/HermesAgent"
 HERMES_HOME="${HERMES_HOME:-$HOME/.hermes}"
@@ -10,6 +10,7 @@ RESEARCH_DIR="$HERMES_HOME/research-data"
 OUTPUT_DIR="$HERMES_HOME/cache/documents"
 BACKUP_DIR="$HERMES_HOME/gentleman-backups"
 MARKER="managed-by: TheGentleman/HermesAgent"
+FRESH_INSTALL=0
 
 GREEN="\e[32m"; YELLOW="\e[33m"; CYAN="\e[36m"; RED="\e[31m"; NC="\e[0m"
 ok(){ echo -e "${GREEN}[✓]${NC} $*"; }
@@ -100,6 +101,33 @@ prepare_managed_node(){
   fi
 }
 
+show_first_install_instructions(){
+  echo
+  echo -e "${CYAN}Сейчас откроется официальный мастер первого запуска Hermes.${NC}"
+  echo "Для нашей сборки проходите его так:"
+  echo
+  echo "  1. How would you like to set up Hermes?"
+  echo -e "     ${GREEN}Blank slate — everything off except the bare minimum${NC}"
+  echo
+  echo "  2. Select provider:"
+  echo "     Выберите свою AI-модель прямо здесь."
+  echo "     ChatGPT Plus/Pro -> OpenAI -> ChatGPT/Codex Subscription."
+  echo "     Либо Nous Portal / OpenRouter / xAI — если используете их."
+  echo
+  echo "  3. Select terminal backend:"
+  echo -e "     ${GREEN}Docker — isolated container with configurable resources${NC}"
+  echo
+  echo "  4. Enable egress firewall for Docker sandboxes?"
+  echo -e "     ${GREEN}Yes${NC}"
+  echo
+  echo "  5. Your minimal agent is ready. What next?"
+  echo -e "     ${GREEN}Start with everything disabled — finish now${NC}"
+  echo
+  echo "После этого наш скрипт сам установит Research Skills, Tracker и донастроит Docker."
+  echo
+  read -r -p "Нажмите Enter, чтобы открыть официальный installer Hermes..." _
+}
+
 install_hermes(){
   ensure_runtime_deps
   prepare_managed_node
@@ -108,6 +136,8 @@ install_hermes(){
     info "Hermes уже установлен: $(hermes --version 2>/dev/null || echo installed)"
     hermes update >/dev/null 2>&1 || true
   else
+    FRESH_INSTALL=1
+    show_first_install_instructions
     info "Устанавливаю официальный Hermes Agent..."
     curl -fsSL -H 'Cache-Control: no-cache' "https://hermes-agent.nousresearch.com/install.sh?ts=$(date +%s%N)" | bash
     export PATH="$HOME/.local/bin:/usr/local/bin:/usr/local/lib/hermes-agent/bin:$PATH"
@@ -132,6 +162,29 @@ download_asset(){
   curl -fsSL -H 'Cache-Control: no-cache, no-store' "$(cache_url "$src")" -o "$dst"
 }
 
+install_active_soul(){
+  local soul_tmp
+  soul_tmp="$(mktemp)"
+  curl -fsSL -H 'Cache-Control: no-cache, no-store' "$(cache_url "$BASE_URL/SOUL.md")" -o "$soul_tmp"
+
+  if [ "$FRESH_INSTALL" = "1" ]; then
+    if [ -f "$HERMES_HOME/SOUL.md" ]; then
+      mkdir -p "$BACKUP_DIR"
+      cp -a "$HERMES_HOME/SOUL.md" "$BACKUP_DIR/SOUL.hermes-default.$(date +%Y%m%d-%H%M%S).bak"
+    fi
+    cp "$soul_tmp" "$HERMES_HOME/SOUL.md"
+    ok "Research SOUL.md активирован"
+  elif [ ! -f "$HERMES_HOME/SOUL.md" ] || grep -q "$MARKER" "$HERMES_HOME/SOUL.md" 2>/dev/null; then
+    cp "$soul_tmp" "$HERMES_HOME/SOUL.md"
+    ok "Research SOUL.md установлен/обновлён"
+  else
+    cp "$soul_tmp" "$HERMES_HOME/SOUL.gentleman-example.md"
+    warn "Ваш пользовательский SOUL.md не тронут; новый пример сохранён рядом."
+  fi
+
+  rm -f "$soul_tmp"
+}
+
 research_layer(){
   mkdir -p "$SKILLS_DIR/signal-radar" "$SKILLS_DIR/evidence-dive" "$SKILLS_DIR/watchlist-monitor" "$RESEARCH_DIR" "$OUTPUT_DIR"
   info "Скачиваю Research Skills и Tracker..."
@@ -141,23 +194,14 @@ research_layer(){
   download_asset "$BASE_URL/tracker.py" "$RESEARCH_DIR/tracker.py"
   chmod +x "$RESEARCH_DIR/tracker.py"
 
-  local soul_tmp
-  soul_tmp="$(mktemp)"
-  curl -fsSL -H 'Cache-Control: no-cache, no-store' "$(cache_url "$BASE_URL/SOUL.md")" -o "$soul_tmp"
-  if [ ! -f "$HERMES_HOME/SOUL.md" ] || grep -q "$MARKER" "$HERMES_HOME/SOUL.md" 2>/dev/null; then
-    cp "$soul_tmp" "$HERMES_HOME/SOUL.md"
-  else
-    cp "$soul_tmp" "$HERMES_HOME/SOUL.gentleman-example.md"
-    warn "Ваш кастомный SOUL.md не тронут; пример сохранён рядом."
-  fi
-  rm -f "$soul_tmp"
+  install_active_soul
 
   python3 "$RESEARCH_DIR/tracker.py" stats >/dev/null
   ok "Signal Radar / Evidence Dive / Watchlist Monitor / Tracker готовы"
 }
 
 sandbox(){
-  info "Настраиваю Docker Sandbox..."
+  info "Проверяю и донастраиваю Docker Sandbox..."
   hermes config set terminal.backend docker
   hermes config set terminal.container_persistent false
   hermes config set terminal.docker_mount_cwd_to_workspace false
@@ -170,29 +214,29 @@ sandbox(){
 next_steps(){
 cat <<EOF2
 
-1. Подключить модель через пункт 3 этого меню.
-   - Есть ChatGPT Plus/Pro/Codex -> OpenAI ▶
-   - Хотите самый простой all-in-one -> Nous Portal
-   - Есть API-ключ агрегатора -> OpenRouter
-   - Хотите Grok/X Search через xAI -> xAI Grok ▶
+${CYAN}Первичная установка закончена.${NC}
 
-2. Проверить чат:
+AI-провайдера Hermes уже предлагал подключить ВО ВРЕМЯ первичной установки.
+Пункт 3 меню нужен только если вы пропустили авторизацию или хотите сменить модель.
+
+Дальше:
+
+1. Проверить, что AI отвечает:
    hermes chat -q "Reply only with: AGENT WORKS"
 
-3. Telegram:
-   hermes gateway setup
+2. Настроить Telegram через пункт 4 меню.
 
-4. Gateway 24/7:
-   hermes gateway install && sudo loginctl enable-linger "$USER" && hermes gateway start
+3. После проверки Telegram включить Gateway 24/7 через пункт 5.
 
-5. Tools:
-   hermes tools
+4. Настроить дополнительные Tools через пункт 6.
 
-6. Signal Radar:
+5. Проверить Signal Radar вручную:
    hermes chat -s signal-radar -q "Find the strongest fresh developments in my priority topics from the last 24 hours. Verify important claims and avoid generic news."
 
-7. Deep Research:
+6. Проверить Deep Research:
    hermes chat -s evidence-dive -q "Investigate TARGET deeply. Build a timeline, verify claims, find contradictions and separate confirmed facts from inference."
+
+7. Только после ручных тестов включить Cron через пункты 7-8.
 
 Research DB: $RESEARCH_DIR
 Telegram: https://t.me/GentleChron
@@ -204,7 +248,7 @@ full_install(){
   install_hermes
   research_layer
   sandbox
-  hermes egress install >/dev/null 2>&1 || warn "Egress пока не установлен; это опционально."
+  hermes egress install >/dev/null 2>&1 || warn "Egress binary пока не установился; это опционально."
   hermes config check || true
   hermes doctor || true
   echo -e "\n${GREEN}================ HERMES RESEARCH AGENT УСТАНОВЛЕН ================${NC}"
@@ -214,54 +258,9 @@ full_install(){
 model(){
   find_hermes || { err "Сначала установите Hermes."; return; }
   logo
-  local choice
-  choice=$(whiptail --title "Выбор AI-провайдера" --menu \
-    "Сначала выберите подходящий вариант. Скрипт не просит и не сохраняет ваши ключи — авторизация проходит через официальный Hermes." \
-    22 100 8 \
-      "1" "ChatGPT Plus/Pro/Codex — рекомендуемый вариант: OpenAI ▶" \
-      "2" "Самый простой all-in-one — Nous Portal" \
-      "3" "OpenRouter API — если уже есть API key / баланс" \
-      "4" "xAI / Grok — direct API или SuperGrok / Premium+ OAuth" \
-      "5" "Другой провайдер — открыть полный список Hermes" \
-      "6" "Назад" \
-    3>&1 1>&2 2>&3) || return 0
-
-  case "$choice" in
-    1)
-      clear
-      echo -e "${CYAN}Сейчас откроется официальный список Hermes.${NC}"
-      echo -e "${GREEN}Выберите строку:${NC} OpenAI ▶ (ChatGPT/Codex subscription or direct OpenAI API)"
-      echo "Дальше Hermes предложит OAuth подписки или API-вариант."
-      echo
-      read -r -p "Нажмите Enter, чтобы открыть список..." _
-      hermes model
-      ;;
-    2)
-      clear
-      echo -e "${CYAN}Запускаю официальный Nous Portal OAuth.${NC}"
-      echo "Это самый простой вариант, если не хотите отдельно разбираться с API-провайдерами."
-      echo
-      hermes setup --portal
-      ;;
-    3)
-      clear
-      echo -e "${CYAN}Сейчас откроется официальный список Hermes.${NC}"
-      echo -e "${GREEN}Выберите строку:${NC} OpenRouter (Pay-per-use API aggregator)"
-      echo
-      read -r -p "Нажмите Enter, чтобы открыть список..." _
-      hermes model
-      ;;
-    4)
-      clear
-      echo -e "${CYAN}Сейчас откроется официальный список Hermes.${NC}"
-      echo -e "${GREEN}Выберите строку:${NC} xAI Grok ▶ (Direct API or SuperGrok / Premium+ OAuth)"
-      echo
-      read -r -p "Нажмите Enter, чтобы открыть список..." _
-      hermes model
-      ;;
-    5) hermes model;;
-    6) return 0;;
-  esac
+  echo "Этот пункт нужен для смены/переподключения модели после первичной установки."
+  echo
+  hermes model
 }
 
 telegram(){ find_hermes || { err "Сначала установите Hermes."; return; }; hermes gateway setup; }
@@ -301,6 +300,10 @@ diag(){
   command -v docker >/dev/null && ok "$(docker --version)" || err "Docker отсутствует"
   if find_hermes; then
     ok "Hermes: $(hermes --version 2>/dev/null || echo installed)"
+    echo
+    echo "Active SOUL:"
+    if grep -q "$MARKER" "$HERMES_HOME/SOUL.md" 2>/dev/null; then ok "Research SOUL активен"; else warn "Активен пользовательский/другой SOUL"; fi
+    echo
     hermes gateway status || true
     hermes cron status || true
     hermes egress status || true
@@ -316,10 +319,10 @@ menu(){
   while true; do
     logo
     local c
-    c=$(whiptail --title "Hermes Research Agent by The Gentleman" --menu "Выберите действие:" 24 84 14 \
+    c=$(whiptail --title "Hermes Research Agent by The Gentleman" --menu "Выберите действие:" 24 88 14 \
       "1" "Первичная установка / восстановление" \
       "2" "Обновить Research Skills и Tracker" \
-      "3" "Подключить / сменить AI-модель" \
+      "3" "Сменить / переподключить AI-модель" \
       "4" "Настроить Telegram Gateway" \
       "5" "Включить Gateway 24/7" \
       "6" "Настроить Tools (X / Web / Browser и др.)" \
@@ -333,7 +336,8 @@ menu(){
       1) full_install;; 2) research_layer;; 3) model;; 4) telegram;; 5) gateway;; 6) tools;;
       7) radar_cron;; 8) watch_cron;; 9) tracker;; 10) diag;; 11) next_steps;; 12) exit 0;;
     esac
-    echo; read -r -p "Нажмите Enter, чтобы вернуться в меню..." _
+    echo
+    read -r -p "Нажмите Enter, чтобы вернуться в меню..." _
   done
 }
 
