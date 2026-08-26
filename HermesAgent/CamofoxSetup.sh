@@ -80,12 +80,16 @@ else
   echo 'CAMOFOX_URL=http://localhost:9377' >> "$HERMES_HOME/.env"
 fi
 
-# Camofox is an anti-detection Firefox backend. Hermes must use built-in browser tools.
+# Camofox is a local anti-detection backend for Hermes built-in browser tools.
 hermes config set browser.cloud_provider camofox
 hermes config set browser.backend off
 
 ok "Hermes переключён на Camofox anti-detection browser"
-warn "Camofox сильно уменьшает обычные headless-фингерпринты, но не гарантирует обход любой CAPTCHA/Cloudflare challenge."
+warn "Camofox уменьшает обычные headless-фингерпринты, но не гарантирует обход любой CAPTCHA/Cloudflare challenge."
 echo
-echo "Проверка:"
-echo 'hermes chat -q "Use Browser Automation, not web search. Open https://www.coingecko.com and tell me whether the real homepage loaded or a verification page appeared."'
+echo "Проверка через Telegram после включения Browser Automation для Telegram:"
+echo
+echo 'Используй Browser Automation, не Web Search. Открой https://www.coingecko.com и скажи, загрузилась настоящая главная страница или страница проверки Cloudflare.'
+echo
+echo "Для отдельной CLI-диагностики можно принудительно дать browser toolset:"
+echo 'hermes chat --toolsets browser -q "Use Browser Automation, not web search. Open https://www.coingecko.com and tell me whether the real homepage loaded or a verification page appeared."'
